@@ -1,6 +1,6 @@
 import { useEditorStore } from '../state/store';
-import { getPluginSpec } from '../engine/registry';
-import { ModifierInstance } from '../engine/configTypes';
+import { getPluginSpec } from '~/ParticleSystem/config/registry';
+import { ModifierInstance } from '~/ParticleSystem/config/configTypes';
 import NumberField from './fields/NumberField';
 import Vector3Field from './fields/Vector3Field';
 import Vector2Field from './fields/Vector2Field';

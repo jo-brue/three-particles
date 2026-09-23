@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ModifierInstance, ModifierSlot } from '../engine/configTypes';
-import { getPluginSpec } from '../engine/registry';
+import { ModifierInstance, ModifierSlot } from '~/ParticleSystem/config/configTypes';
+import { getPluginSpec } from '~/ParticleSystem/config/registry';
 import { useEditorStore } from '../state/store';
 import AddModifierMenu from './AddModifierMenu';
+import PanelHeader from './PanelHeader';
 
 function StackItem({ slot, instance }: { slot: ModifierSlot; instance: ModifierInstance }) {
   const spec = getPluginSpec(instance.type);
@@ -39,25 +41,58 @@ function StackItem({ slot, instance }: { slot: ModifierSlot; instance: ModifierI
 
 export default function StackPanel({ slot, title, items }: { slot: ModifierSlot; title: string; items: ModifierInstance[] }) {
   const addModifier = useEditorStore((s) => s.addModifier);
+  const system = useEditorStore((s) => s.config.system);
+  const setSystemSetting = useEditorStore((s) => s.setSystemSetting);
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="stack-panel">
-      <div className="stack-panel-title">{title}</div>
-      <div className="stack-panel-body">
-        {items.length === 0 && (
-          <div className="stack-panel-empty">
-            {slot === 'spawn'
-              ? 'No spawn modifier yet - without one (e.g. Constant Spawn), particles die once and never respawn'
-              : 'No modifiers yet'}
-          </div>
-        )}
-        <SortableContext items={items.map((m) => m.id)} strategy={verticalListSortingStrategy}>
-          {items.map((instance) => (
-            <StackItem key={instance.id} slot={slot} instance={instance} />
-          ))}
-        </SortableContext>
-        <AddModifierMenu slot={slot} onAdd={(type) => addModifier(slot, type)} />
-      </div>
+      <PanelHeader title={title} collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
+      {!collapsed && (
+        <div className="stack-panel-body">
+          {slot === 'render' && (
+            <div className="global-field-row">
+              <label className="global-field">
+                Render method
+                <select
+                  value={system.renderMode}
+                  onChange={(e) => setSystemSetting('renderMode', e.target.value as any)}
+                >
+                  <option value="billboard">Billboard</option>
+                  <option value="instanced">Instanced</option>
+                </select>
+              </label>
+
+              <label className="global-field">
+                Blend mode
+                <select
+                  value={system.blendMode}
+                  onChange={(e) => setSystemSetting('blendMode', e.target.value as any)}
+                >
+                  <option value="normal">Normal</option>
+                  <option value="additive">Additive</option>
+                  <option value="multiply">Multiply</option>
+                  <option value="subtractive">Subtractive</option>
+                </select>
+              </label>
+            </div>
+          )}
+
+          {items.length === 0 && (
+            <div className="stack-panel-empty">
+              {slot === 'spawn'
+                ? 'No spawn modifier yet - without one (e.g. Constant Spawn), particles die once and never respawn'
+                : 'No modifiers yet'}
+            </div>
+          )}
+          <SortableContext items={items.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+            {items.map((instance) => (
+              <StackItem key={instance.id} slot={slot} instance={instance} />
+            ))}
+          </SortableContext>
+          <AddModifierMenu slot={slot} onAdd={(type) => addModifier(slot, type)} />
+        </div>
+      )}
     </div>
   );
 }

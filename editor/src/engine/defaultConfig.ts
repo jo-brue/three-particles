@@ -1,9 +1,11 @@
-import { makeInstanceId, ParticleSystemConfig } from './configTypes';
+import { DEFAULT_CAMERA_STATE, makeInstanceId, ParticleSystemConfig } from '~/ParticleSystem/config/configTypes';
 
 export function createDefaultConfig(): ParticleSystemConfig {
   return {
     version: 1,
     name: 'Embers',
+    camera: { ...DEFAULT_CAMERA_STATE },
+    showGizmos: true,
     system: {
       size: 64,
       baseSize: 34,

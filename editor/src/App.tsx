@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import TopBar from './components/TopBar';
 import EmitterZone from './components/EmitterZone';
@@ -5,7 +6,7 @@ import StackPanel from './components/StackPanel';
 import Inspector from './components/Inspector';
 import Viewport from './components/Viewport';
 import { useEditorStore } from './state/store';
-import { ModifierSlot } from './engine/configTypes';
+import { ModifierSlot } from '~/ParticleSystem/config/configTypes';
 
 function listForSlot(config: ReturnType<typeof useEditorStore.getState>['config'], slot: ModifierSlot) {
   if (slot === 'spawn') return config.spawnModifiers;
@@ -19,6 +20,19 @@ export default function App() {
   const reorderModifier = useEditorStore((s) => s.reorderModifier);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  // Clicking anywhere that isn't a modifier item, the inspector, or an interactive control
+  // (which may itself change the selection, e.g. picking a new emitter type) clears the
+  // current selection - lets clicking empty viewport/panel space deselect.
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.stack-item, .inspector, .add-modifier-menu, input, select, textarea, button, label, a')) return;
+      useEditorStore.getState().select(null);
+    };
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;

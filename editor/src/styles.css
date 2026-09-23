@@ -227,9 +227,26 @@ label { color: var(--text-dim); font-size: 11px; }
 }
 
 .stack-panel { border-bottom: 1px solid var(--border); }
-.stack-panel-title { padding: 8px 12px 4px; font-weight: 600; font-size: 12px; }
+.stack-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px 4px;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+.stack-panel-title { font-weight: 600; font-size: 12px; }
+.stack-panel-chevron { display: inline-block; color: var(--text-dim); font-size: 10px; transition: transform 0.15s ease; }
+.stack-panel-chevron.collapsed { transform: rotate(-90deg); }
 .stack-panel-body { padding: 4px 10px 10px; display: flex; flex-direction: column; gap: 4px; min-height: 34px; }
 .stack-panel-empty { color: var(--text-dim); font-size: 11px; padding: 8px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); }
+
+.global-field-row { display: flex; gap: 10px; flex-wrap: wrap; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px dashed var(--border); }
+.global-field { display: flex; flex-direction: column; gap: 2px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; flex: 1 1 auto; }
+.global-field input, .global-field select { width: 100%; }
 
 .stack-item {
   display: flex;

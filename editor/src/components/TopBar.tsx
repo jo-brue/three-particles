@@ -1,7 +1,6 @@
 import { useRef } from 'react';
 import { useEditorStore } from '../state/store';
 import { downloadConfig, readConfigFile } from '../utils/json';
-import { EMITTER_SIZE_OPTIONS } from '../engine/registry';
 import PresetsControl from './PresetsControl';
 
 export default function TopBar() {
@@ -9,7 +8,7 @@ export default function TopBar() {
   const setSystemSetting = useEditorStore((s) => s.setSystemSetting);
   const setConfig = useEditorStore((s) => s.setConfig);
   const resetToDefault = useEditorStore((s) => s.resetToDefault);
-  const showGizmos = useEditorStore((s) => s.showGizmos);
+  const showGizmos = useEditorStore((s) => s.config.showGizmos);
   const setShowGizmos = useEditorStore((s) => s.setShowGizmos);
   const transparentScreenshot = useEditorStore((s) => s.transparentScreenshot);
   const setTransparentScreenshot = useEditorStore((s) => s.setTransparentScreenshot);
@@ -20,35 +19,6 @@ export default function TopBar() {
       <div className="topbar-brand">Particle Editor</div>
 
       <PresetsControl />
-
-      <label className="topbar-field">
-        Size
-        <select
-          value={config.system.size}
-          onChange={(e) => setSystemSetting('size', parseInt(e.target.value, 10) as any)}
-        >
-          {EMITTER_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}×{s} ({s * s})</option>)}
-        </select>
-      </label>
-
-      <label className="topbar-field">
-        Render
-        <select
-          value={config.system.renderMode}
-          onChange={(e) => setSystemSetting('renderMode', e.target.value as any)}
-        >
-          <option value="billboard">Billboard</option>
-          <option value="instanced">Instanced</option>
-        </select>
-      </label>
-
-      <label className="topbar-field">
-        Base size
-        <input
-          type="number" min={0} step={1} value={config.system.baseSize}
-          onChange={(e) => setSystemSetting('baseSize', parseFloat(e.target.value) || 0)}
-        />
-      </label>
 
       <label className="topbar-field" title="Particles are born one after another instead of all at once - this sets how many lifetimes that staggered reveal spreads across on load (1 = spread over one full lifetime).">
         Reveal spread
@@ -80,19 +50,6 @@ export default function TopBar() {
           type="checkbox" checked={showGizmos}
           onChange={(e) => setShowGizmos(e.target.checked)}
         />
-      </label>
-
-      <label className="topbar-field">
-        Blend Mode
-        <select
-          value={config.system.blendMode}
-          onChange={(e) => setSystemSetting('blendMode', e.target.value as any)}
-        >
-          <option value="normal">Normal</option>
-          <option value="additive">Additive</option>
-          <option value="multiply">Multiply</option>
-          <option value="subtractive">Subtractive</option>
-        </select>
       </label>
 
       <div className="topbar-spacer" />

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { ParticleSystemConfig } from '../engine/configTypes';
+import { ParticleSystemConfig } from '~/ParticleSystem/config/configTypes';
 import { resilientLocalStorage } from './resilientLocalStorage';
 
 export interface SavedPreset {

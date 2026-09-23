@@ -4,8 +4,8 @@ import ParticleSystemEngine, {
   ParticleEmitterPlugin,
   ParticlePlugin,
 } from '~/ParticleSystem/ParticleSystem';
-import { BlendMode, ModifierInstance, ParamKind, ParticleSystemConfig } from './configTypes';
-import { getPluginSpec, PluginSpec } from './registry';
+import { BlendMode, ModifierInstance, ParamKind, ParticleSystemConfig } from '~/ParticleSystem/config/configTypes';
+import { getPluginSpec, PluginSpec } from '~/ParticleSystem/config/registry';
 import {
   buildColorGradientTexture,
   buildImageTexture,
@@ -14,7 +14,7 @@ import {
   buildVec3GradientTexture,
   colorFromHex,
   Trs,
-} from './textureBuilders';
+} from '~/ParticleSystem/config/textureBuilders';
 
 export type UniformKey = string; // `${instanceId}:${paramName}`
 
@@ -149,7 +149,15 @@ function buildModifier(instance: ModifierInstance, uniforms: Map<UniformKey, Uni
   }
 }
 
-export function buildParticleSystem(config: ParticleSystemConfig): BuiltSystem {
+export interface BuildOptions {
+  /** ParticleSystem defaults to `visible = false` (consumers flip it once ready, e.g. after an
+   *  orchestrated fade-in). Pass true to have it on screen immediately. Default: false. */
+  visible?: boolean;
+  /** Passed straight to the engine - set false to drive `system.update()` yourself. Default: true. */
+  autoUpdate?: boolean;
+}
+
+export function buildParticleSystem(config: ParticleSystemConfig, options: BuildOptions = {}): BuiltSystem {
   const uniforms = new Map<UniformKey, Uniform<any>>();
 
   const emitterSpec = getPluginSpec(config.emitter.type);
@@ -178,7 +186,7 @@ export function buildParticleSystem(config: ParticleSystemConfig): BuiltSystem {
     {
       emitter: emitterPlugin,
       baseSize: config.system.baseSize,
-      autoUpdate: true,
+      autoUpdate: options.autoUpdate ?? true,
       renderMode: config.system.renderMode,
       // three.js only applies a material's blending mode when `transparent` is true - for
       // NormalBlending it otherwise forces NoBlending (see WebGLState.setMaterial), so without
@@ -193,10 +201,7 @@ export function buildParticleSystem(config: ParticleSystemConfig): BuiltSystem {
     config.system.preHeat,
   );
 
-  // ParticleSystem (ParticleSystem/ParticleSystem.ts) defaults to `visible = false` - the
-  // engine expects a consumer to flip this once ready (e.g. after an orchestrated fade-in).
-  // The editor always wants it on screen immediately.
-  system.visible = true;
+  if (options.visible) system.visible = true;
 
   return {
     system,

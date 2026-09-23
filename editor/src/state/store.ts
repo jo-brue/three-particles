@@ -1,29 +1,23 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import {
+  CameraState,
   LIVE_KINDS,
   makeInstanceId,
   ModifierInstance,
   ModifierSlot,
   ParamKind,
   ParticleSystemConfig,
-} from '../engine/configTypes';
+} from '~/ParticleSystem/config/configTypes';
 import { createDefaultConfig } from '../engine/defaultConfig';
-import { getPluginSpec } from '../engine/registry';
-import { applyLiveCircleCenterUpdate, applyLiveLineCenterUpdate, applyLiveUpdate, BuiltSystem } from '../engine/buildParticleSystem';
+import { getPluginSpec } from '~/ParticleSystem/config/registry';
+import { applyLiveCircleCenterUpdate, applyLiveLineCenterUpdate, applyLiveUpdate, BuiltSystem } from '~/ParticleSystem/config/buildParticleSystem';
 import { resilientLocalStorage } from './resilientLocalStorage';
 
 export interface Selection {
   slot: ModifierSlot;
   id: string;
 }
-
-export interface CameraState {
-  position: [number, number, number];
-  target: [number, number, number];
-}
-
-const DEFAULT_CAMERA_STATE: CameraState = { position: [4, 3, 6], target: [0, 0, 0] };
 
 interface EditorState {
   config: ParticleSystemConfig;
@@ -33,20 +27,23 @@ interface EditorState {
    *  when this changes. Left untouched for live-tweakable numeric/vector/color/gradient
    *  param edits, which are pushed straight into the live THREE.Uniform instead. */
   structureVersion: number;
+  /** Bumped only when the whole config is replaced wholesale (import, preset load, reset) -
+   *  unlike structureVersion this does NOT bump on ordinary edits, so the viewport can use it
+   *  to snap the camera to the loaded config's saved position without yanking it back on
+   *  every param tweak. */
+  configVersion: number;
   /** Set by the viewport after each rebuild; used to push live param updates without
    *  going through React's render cycle. */
   builtSystemRef: { current: BuiltSystem | null };
   buildError: string | null;
   setBuildError: (error: string | null) => void;
 
-  /** Orbit camera position/target - persisted so the viewport reopens where you left it. */
-  cameraState: CameraState;
+  /** Orbit camera position/target - part of `config` so it round-trips through JSON export/
+   *  import and saved presets (loading a preset restores the view it was authored from). */
   setCameraState: (cameraState: CameraState) => void;
 
-  /** Viewport chrome (orientation gizmo, grid, axes) - an editor display preference, not part
-   *  of the particle system itself, so it lives alongside cameraState rather than in `config`
-   *  (and isn't included in JSON export/import). */
-  showGizmos: boolean;
+  /** Viewport grid/axes helpers - also part of `config` (see above) since some setups read
+   *  better with them off. */
   setShowGizmos: (showGizmos: boolean) => void;
 
   /** Whether a screenshot should omit the scene background (alpha 0) instead of the configured
@@ -105,23 +102,27 @@ export const useEditorStore = create<EditorState>()(
       config: createDefaultConfig(),
       selected: null,
       structureVersion: 0,
+      configVersion: 0,
       builtSystemRef: { current: null },
       buildError: null,
       setBuildError: (buildError) => set({ buildError }),
 
-      cameraState: DEFAULT_CAMERA_STATE,
-      setCameraState: (cameraState) => set({ cameraState }),
-
-      showGizmos: true,
-      setShowGizmos: (showGizmos) => set({ showGizmos }),
+      // Neither touches structureVersion (no rebuild needed) nor configVersion (this is an
+      // incidental save-as-you-go, not a whole-config load the viewport should snap to).
+      setCameraState: (cameraState) => set((s) => ({ config: { ...s.config, camera: cameraState } })),
+      setShowGizmos: (showGizmos) => set((s) => ({ config: { ...s.config, showGizmos } })),
 
       transparentScreenshot: false,
       setTransparentScreenshot: (transparentScreenshot) => set({ transparentScreenshot }),
       screenshotRef: { current: null },
 
-      setConfig: (config) => set({ config, structureVersion: get().structureVersion + 1, selected: null }),
+      setConfig: (config) => set((s) => ({
+        config, structureVersion: s.structureVersion + 1, configVersion: s.configVersion + 1, selected: null,
+      })),
 
-      resetToDefault: () => set({ config: createDefaultConfig(), structureVersion: get().structureVersion + 1, selected: null }),
+      resetToDefault: () => set((s) => ({
+        config: createDefaultConfig(), structureVersion: s.structureVersion + 1, configVersion: s.configVersion + 1, selected: null,
+      })),
 
       select: (selected) => set({ selected }),
 
@@ -253,23 +254,29 @@ export const useEditorStore = create<EditorState>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => resilientLocalStorage),
-      // Only config + camera + viewport chrome are worth surviving a reload - selection/build
-      // state are transient, and builtSystemRef holds live (non-serializable) THREE objects.
+      // Only config + viewport chrome are worth surviving a reload - selection/build state are
+      // transient, and builtSystemRef holds live (non-serializable) THREE objects. Camera/
+      // gizmos live inside config now (see configTypes.ts) so they're covered here too.
       partialize: (state) => ({
         config: state.config,
-        cameraState: state.cameraState,
-        showGizmos: state.showGizmos,
         transparentScreenshot: state.transparentScreenshot,
       }),
-      // Backfills fields added after a config/camera state was already saved (e.g. blendMode,
-      // cameraState itself), so older localStorage entries don't load with `undefined` settings.
+      // Backfills fields added after a config was already saved (e.g. blendMode, camera/
+      // showGizmos moving from their own top-level keys into config), so older localStorage
+      // entries don't load with `undefined` settings.
       merge: (persisted, current) => {
-        const p = persisted as Partial<EditorState> | undefined;
+        const p = persisted as (Partial<EditorState> & { cameraState?: CameraState; showGizmos?: boolean }) | undefined;
         return {
           ...current,
-          config: p?.config ? { ...current.config, ...p.config, system: { ...current.config.system, ...p.config.system } } : current.config,
-          cameraState: p?.cameraState ? { ...current.cameraState, ...p.cameraState } : current.cameraState,
-          showGizmos: p?.showGizmos ?? current.showGizmos,
+          config: p?.config ? {
+            ...current.config,
+            ...p.config,
+            system: { ...current.config.system, ...p.config.system },
+            camera: p.config.camera
+              ? { ...current.config.camera, ...p.config.camera }
+              : p.cameraState ? { ...current.config.camera, ...p.cameraState } : current.config.camera,
+            showGizmos: p.config.showGizmos ?? p.showGizmos ?? current.config.showGizmos,
+          } : current.config,
           transparentScreenshot: p?.transparentScreenshot ?? current.transparentScreenshot,
         };
       },

@@ -48,6 +48,13 @@ export interface ParamSpec {
   options?: string[];
 }
 
+export interface CameraState {
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
+export const DEFAULT_CAMERA_STATE: CameraState = { position: [4, 3, 6], target: [0, 0, 0] };
+
 export type ModifierSlot = 'emitter' | 'spawn' | 'update' | 'render';
 
 export interface ModifierInstance {
@@ -68,6 +75,12 @@ export interface ParticleSystemConfig {
     background: string;
     blendMode: BlendMode;
   };
+  /** Orbit camera position/target - saved with the setup so loading a preset restores the
+   *  view it was authored from, not wherever the viewport last happened to be. */
+  camera: CameraState;
+  /** Whether the viewport grid/axes helpers are shown - an editor display preference, but
+   *  saved per-setup since some setups are easier to judge with them off (e.g. dense/bright ones). */
+  showGizmos: boolean;
   emitter: ModifierInstance;
   spawnModifiers: ModifierInstance[];
   updateModifiers: ModifierInstance[];

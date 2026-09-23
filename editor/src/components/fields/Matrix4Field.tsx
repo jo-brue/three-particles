@@ -1,4 +1,4 @@
-import { IDENTITY_TRS, Trs } from '../../engine/textureBuilders';
+import { IDENTITY_TRS, Trs } from '~/ParticleSystem/config/textureBuilders';
 import Vector3Field from './Vector3Field';
 
 interface Matrix4FieldProps {

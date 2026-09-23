@@ -2,7 +2,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../state/store';
-import { buildParticleSystem } from '../engine/buildParticleSystem';
+import { buildParticleSystem } from '~/ParticleSystem/config/buildParticleSystem';
 
 // Keeps the renderer's clear alpha in sync with the Transparent toggle - live, not just at
 // screenshot time - so the canvas actually goes transparent (revealing the checkerboard behind
@@ -45,6 +45,28 @@ function ScreenshotBridge() {
   return null;
 }
 
+// Snaps the camera/controls to config.camera whenever a whole new config loads (import, preset,
+// reset) - not on every ordinary edit, which is why this watches configVersion rather than
+// structureVersion (see store.ts). OrbitControls otherwise only reads its target/position props
+// once at mount, so without this a preset's saved camera would never actually take effect.
+function CameraSync() {
+  const configVersion = useEditorStore((s) => s.configVersion);
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls) as { target: { set: (x: number, y: number, z: number) => void }; update: () => void } | null;
+
+  useEffect(() => {
+    const { position, target } = useEditorStore.getState().config.camera;
+    camera.position.set(...position);
+    if (controls) {
+      controls.target.set(...target);
+      controls.update();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configVersion]);
+
+  return null;
+}
+
 function SceneContent() {
   const structureVersion = useEditorStore((s) => s.structureVersion);
   const setBuildError = useEditorStore((s) => s.setBuildError);
@@ -53,7 +75,7 @@ function SceneContent() {
   useEffect(() => {
     const config = useEditorStore.getState().config;
     try {
-      const built = buildParticleSystem(config);
+      const built = buildParticleSystem(config, { visible: true });
       scene.add(built.system);
       useEditorStore.getState().builtSystemRef.current = built;
       setBuildError(null);
@@ -77,13 +99,13 @@ export default function Viewport() {
   const background = useEditorStore((s) => s.config.system.background);
   const buildError = useEditorStore((s) => s.buildError);
   const setCameraState = useEditorStore((s) => s.setCameraState);
-  const showGizmos = useEditorStore((s) => s.showGizmos);
+  const showGizmos = useEditorStore((s) => s.config.showGizmos);
   const transparentScreenshot = useEditorStore((s) => s.transparentScreenshot);
   const controlsRef = useRef<any>(null);
 
-  // Read once at mount (not reactively) - OrbitControls owns the camera afterward, this is
-  // only ever a starting point restored from localStorage.
-  const [initialCamera] = useState(() => useEditorStore.getState().cameraState);
+  // Read once at mount (not reactively) - OrbitControls owns the camera afterward. Later
+  // whole-config loads are instead picked up by <CameraSync>, which watches configVersion.
+  const [initialCamera] = useState(() => useEditorStore.getState().config.camera);
 
   const persistCameraState = () => {
     const controls = controlsRef.current;
@@ -103,6 +125,7 @@ export default function Viewport() {
         <ClearAlphaController transparent={transparentScreenshot} />
         {showGizmos && <gridHelper args={[20, 20, '#333844', '#20232c']} />}
         {showGizmos && <axesHelper args={[1.5]} />}
+        <CameraSync />
         <SceneContent />
         <ScreenshotBridge />
         <OrbitControls

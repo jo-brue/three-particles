@@ -1,8 +1,8 @@
 import * as EmitterPlugins from '~/ParticleSystem/ParticlePluginsEmitter';
 import * as UpdatePlugins from '~/ParticleSystem/ParticlePluginsUpdate';
 import * as RenderPlugins from '~/ParticleSystem/ParticlePluginsRender';
-import { ModifierSlot, ParamSpec, ParticleSystemSizeOption } from './configTypes';
-import { IDENTITY_TRS } from './textureBuilders';
+import { ModifierSlot, ParamSpec, ParticleSystemSizeOption } from '~/ParticleSystem/config/configTypes';
+import { IDENTITY_TRS } from '~/ParticleSystem/config/textureBuilders';
 
 export interface PluginSpec {
   name: string;
@@ -11,7 +11,7 @@ export interface PluginSpec {
   params: ParamSpec[];
   fn: (...args: any[]) => any;
   /** rectangle/circle/circles/circlesStatic/line/lines/linesStatic take the system's
-   *  particle-grid size as their first positional arg; the editor supplies it automatically
+   *  particle-grid size as their first positional arg; the loader supplies it automatically
    *  instead of exposing it. */
   injectSystemSize?: boolean;
   /** Best-effort registry entry auto-derived from the function's runtime signature rather
@@ -136,7 +136,7 @@ const SPAWN_PLUGINS: PluginSpec[] = [
     name: 'killAreaRound', slot: 'spawn', label: 'Kill Area (Round)', fn: EmitterPlugins.killAreaRound,
     params: [
       p('position', 'vec3', vec3()),
-      p('size', 'float', 1, { min: 0, max: 20, step: 0.1 }),
+      p('size', 'float', 1, { min: 0, max: 2, step: 0.01 }),
       p('invert', 'plainBool', true),
     ],
   },

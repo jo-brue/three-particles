@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ModifierSlot } from '../engine/configTypes';
-import { pluginsForSlot } from '../engine/registry';
+import { ModifierSlot } from '~/ParticleSystem/config/configTypes';
+import { pluginsForSlot } from '~/ParticleSystem/config/registry';
 
 export default function AddModifierMenu({
   slot,
