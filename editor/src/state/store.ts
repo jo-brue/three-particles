@@ -70,6 +70,9 @@ interface EditorState {
   setParam: (slot: ModifierSlot, id: string, paramName: string, kind: ParamKind, value: unknown) => void;
   setCircleCenter: (slot: ModifierSlot, id: string, paramName: string, index: number, center: { x: number; y: number; z: number }) => void;
   setLineCenter: (slot: ModifierSlot, id: string, paramName: string, index: number, center: { x: number; y: number; z: number }) => void;
+  /** Marks a param as accessible from outside at runtime under `name` (null un-exposes it).
+   *  No rebuild - the editor builds with every param live anyway. */
+  setExposed: (slot: ModifierSlot, id: string, paramName: string, name: string | null) => void;
 }
 
 function listForSlot(config: ParticleSystemConfig, slot: ModifierSlot): ModifierInstance[] | null {
@@ -250,6 +253,18 @@ export const useEditorStore = create<EditorState>()(
           set((s) => ({ structureVersion: s.structureVersion + 1 }));
         }
       },
+
+      setExposed: (slot, id, paramName, name) => set((s) => {
+        const updateInstance = (m: ModifierInstance): ModifierInstance => {
+          if (m.id !== id) return m;
+          const { [paramName]: _removed, ...rest } = m.exposed ?? {};
+          const exposed = name === null ? rest : { ...rest, [paramName]: name };
+          return { ...m, exposed: Object.keys(exposed).length ? exposed : undefined };
+        };
+        if (slot === 'emitter') return { config: { ...s.config, emitter: updateInstance(s.config.emitter) } };
+        const list = listForSlot(s.config, slot)!.map(updateInstance);
+        return { config: withSlotList(s.config, slot, list) };
+      }),
     }),
     {
       name: STORAGE_KEY,

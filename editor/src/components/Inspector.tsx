@@ -1,6 +1,7 @@
 import { useEditorStore } from '../state/store';
 import { getPluginSpec } from '~/ParticleSystem/config/registry';
-import { ModifierInstance } from '~/ParticleSystem/config/configTypes';
+import { exposedName, LIVE_KINDS, ModifierInstance } from '~/ParticleSystem/config/configTypes';
+import { collectExposedParams, findDuplicateExposedNames } from '~/ParticleSystem/config/buildParticleSystem';
 import NumberField from './fields/NumberField';
 import Vector3Field from './fields/Vector3Field';
 import Vector2Field from './fields/Vector2Field';
@@ -16,6 +17,7 @@ import CirclesListField from './fields/CirclesListField';
 import LinesListField from './fields/LinesListField';
 import SelectField from './fields/SelectField';
 import JsonField from './fields/JsonField';
+import ExposeControl from './fields/ExposeControl';
 
 export default function Inspector() {
   const selected = useEditorStore((s) => s.selected);
@@ -25,6 +27,7 @@ export default function Inspector() {
   const setLineCenter = useEditorStore((s) => s.setLineCenter);
   const removeModifier = useEditorStore((s) => s.removeModifier);
   const toggleEnabled = useEditorStore((s) => s.toggleEnabled);
+  const setExposed = useEditorStore((s) => s.setExposed);
 
   if (!selected) {
     return <div className="inspector inspector-empty">Select a modifier to edit its parameters.</div>;
@@ -40,6 +43,8 @@ export default function Inspector() {
 
   const spec = getPluginSpec(instance.type);
   if (!spec) return <div className="inspector inspector-empty">Unknown plugin "{instance.type}".</div>;
+
+  const duplicateNames = findDuplicateExposedNames(collectExposedParams(config));
 
   return (
     <div className="inspector">
@@ -71,7 +76,7 @@ export default function Inspector() {
           const value = instance.params[paramSpec.name] ?? paramSpec.default;
           const onChange = (v: unknown) => setParam(selected.slot, instance.id, paramSpec.name, paramSpec.kind, v);
 
-          switch (paramSpec.kind) {
+          const field = (() => { switch (paramSpec.kind) {
             case 'float':
               return <NumberField key={paramSpec.name} label={paramSpec.label} value={value as number} min={paramSpec.min} max={paramSpec.max} step={paramSpec.step} onChange={onChange} />;
             case 'plainFloat':
@@ -128,7 +133,22 @@ export default function Inspector() {
             case 'json':
             default:
               return <JsonField key={paramSpec.name} label={paramSpec.label} value={value} onChange={onChange} />;
-          }
+          } })();
+
+          if (!LIVE_KINDS.has(paramSpec.kind)) return field;
+          const name = exposedName(instance, paramSpec.name);
+          return (
+            <div key={paramSpec.name} className={`param-block${name !== null ? ' exposed' : ''}`}>
+              {field}
+              <ExposeControl
+                instanceId={instance.id}
+                paramName={paramSpec.name}
+                name={instance.exposed?.[paramSpec.name]}
+                duplicate={name !== null && instance.enabled && duplicateNames.has(name)}
+                onChange={(n) => setExposed(selected.slot, instance.id, paramSpec.name, n)}
+              />
+            </div>
+          );
         })}
       </div>
     </div>

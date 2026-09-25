@@ -27,10 +27,18 @@ export type ParamKind =
   | 'json';          // arbitrary passthrough for the generic fallback -> structural (rebuild)
 
 /** Kinds that bind into a live THREE.Uniform, so dragging a slider mutates .value in place
- *  instead of rebuilding the ParticleSystem (which would recompile shaders). */
+ *  instead of rebuilding the ParticleSystem (which would recompile shaders). Only the editor
+ *  makes all of them live - at runtime, only params listed in ModifierInstance.exposed are
+ *  guaranteed to be uniforms (see BAKEABLE_KINDS). */
 export const LIVE_KINDS = new Set<ParamKind>([
   'float', 'vec3', 'vec2', 'color', 'matrix4', 'gradientColor', 'gradientScalar', 'gradientVec3', 'texture',
 ]);
+
+/** LIVE_KINDS whose value can instead be baked into the GLSL source as a literal - the engine's
+ *  handleProp() does that whenever it gets a plain value instead of a Uniform. The remaining
+ *  live kinds (textures, gradients, matrix4) always stay uniforms: a sampler can't be a
+ *  literal, and matrices go through handleUniformProp(), which only takes Uniforms. */
+export const BAKEABLE_KINDS = new Set<ParamKind>(['float', 'vec3', 'vec2', 'color']);
 
 export interface ParamSpec {
   name: string;
@@ -46,6 +54,9 @@ export interface ParamSpec {
   linesCenterLive?: boolean;
   /** select only: the fixed choices offered in the dropdown. */
   options?: string[];
+  /** A BAKEABLE_KINDS param whose plugin still passes it through handleUniformProp(), so it
+   *  must stay a Uniform even when not exposed. */
+  uniformOnly?: boolean;
 }
 
 export interface CameraState {
@@ -55,6 +66,10 @@ export interface CameraState {
 
 export const DEFAULT_CAMERA_STATE: CameraState = { position: [4, 3, 6], target: [0, 0, 0] };
 
+/** The editor viewport's lens - not saved per config, so the loader applies the same values to
+ *  make a loaded setup frame exactly as it did in the editor. */
+export const EDITOR_CAMERA_LENS = { fov: 50, near: 0.01, far: 500 } as const;
+
 export type ModifierSlot = 'emitter' | 'spawn' | 'update' | 'render';
 
 export interface ModifierInstance {
@@ -62,6 +77,21 @@ export interface ModifierInstance {
   type: string;
   enabled: boolean;
   params: Record<string, unknown>;
+  /** Params made accessible from outside at runtime: paramName -> public name. An empty name
+   *  falls back to defaultExposedName(). Anything not listed here is baked into the shader as
+   *  a constant when loaded outside the editor (see BAKEABLE_KINDS). */
+  exposed?: Record<string, string>;
+}
+
+/** The public name an exposed param gets when the user hasn't named it. */
+export function defaultExposedName(instanceId: string, paramName: string): string {
+  return `${instanceId}:${paramName}`;
+}
+
+export function exposedName(instance: ModifierInstance, paramName: string): string | null {
+  const name = instance.exposed?.[paramName];
+  if (name === undefined) return null;
+  return name.trim() || defaultExposedName(instance.id, paramName);
 }
 
 export interface ParticleSystemConfig {

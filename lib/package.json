@@ -1,0 +1,35 @@
+{
+  "name": "jb-three-particles",
+  "version": "0.1.0",
+  "description": "GPU (GPGPU) particle system for three.js with composable GLSL plugins and a loader for particle-editor JSON exports",
+  "type": "module",
+  "main": "./dist/jb-three-particles.js",
+  "module": "./dist/jb-three-particles.js",
+  "types": "./dist/types/lib/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/lib/src/index.d.ts",
+      "import": "./dist/jb-three-particles.js"
+    },
+    "./assets/*": "./dist/assets/*"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "release": "vite build && node scripts/release.mjs"
+  },
+  "peerDependencies": {
+    "three": ">=0.169.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-terser": "^1.0.0",
+    "@types/three": "^0.169.0",
+    "terser": "^5.51.2",
+    "three": "^0.169.0",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.9",
+    "vite-plugin-dts": "^4.3.0"
+  }
+}

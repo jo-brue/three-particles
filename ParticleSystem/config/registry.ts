@@ -462,7 +462,8 @@ const RENDER_PLUGINS: PluginSpec[] = [
   {
     name: 'colorRing', slot: 'render', label: 'Color Ring', fn: RenderPlugins.colorRing,
     params: [
-      p('color', 'color', '#ffffff'),
+      // colorRing()/color() route their color through handleUniformProp() - Uniform-only.
+      p('color', 'color', '#ffffff', { uniformOnly: true }),
       p('position', 'vec3', vec3()),
       p('size', 'float', 1, { min: 0, max: 20, step: 0.1 }),
     ],
@@ -482,7 +483,7 @@ const RENDER_PLUGINS: PluginSpec[] = [
   },
   {
     name: 'color', slot: 'render', label: 'Color', fn: RenderPlugins.color,
-    params: [p('col', 'color', '#ffffff', { label: 'Color' })],
+    params: [p('col', 'color', '#ffffff', { label: 'Color', uniformOnly: true })],
   },
   {
     name: 'colorFromLookup', slot: 'render', label: 'Color From Lookup', fn: RenderPlugins.colorFromLookup,

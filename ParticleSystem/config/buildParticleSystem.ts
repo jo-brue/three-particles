@@ -4,7 +4,17 @@ import ParticleSystemEngine, {
   ParticleEmitterPlugin,
   ParticlePlugin,
 } from '~/ParticleSystem/ParticleSystem';
-import { BlendMode, ModifierInstance, ParamKind, ParticleSystemConfig } from '~/ParticleSystem/config/configTypes';
+import {
+  BAKEABLE_KINDS,
+  BlendMode,
+  exposedName,
+  LIVE_KINDS,
+  ModifierInstance,
+  ModifierSlot,
+  ParamKind,
+  ParamSpec,
+  ParticleSystemConfig,
+} from '~/ParticleSystem/config/configTypes';
 import { getPluginSpec, PluginSpec } from '~/ParticleSystem/config/registry';
 import {
   buildColorGradientTexture,
@@ -27,9 +37,27 @@ function blendingConstant(mode: BlendMode) {
   }
 }
 
+export interface ExposedParam {
+  name: string;
+  slot: ModifierSlot;
+  instanceId: string;
+  modifierType: string;
+  param: string;
+  kind: ParamKind;
+}
+
 export interface BuiltSystem {
   system: ParticleSystemEngine;
+  /** Every Uniform the loader created, keyed `${instanceId}:${paramName}`. */
   uniforms: Map<UniformKey, Uniform<any>>;
+  /** The exposed params (see ModifierInstance.exposed) by public name. Mutate `.value` in
+   *  place (`params.wind.value.set(1, 0, 0)`), or use setParam() for JSON-style values. */
+  params: Record<string, Uniform<any>>;
+  exposed: ExposedParam[];
+  /** Sets an exposed param from the same JSON-style value the editor saves ({x,y,z}, '#rrggbb',
+   *  gradient stops, ...) - rebuilds textures for gradient/texture params. False if `name`
+   *  isn't exposed (or its modifier is disabled). */
+  setParam: (name: string, value: unknown) => boolean;
   dispose: () => void;
 }
 
@@ -71,12 +99,28 @@ function makeUniformValue(kind: ParamKind, value: any, paramName?: string): any 
   }
 }
 
-function buildArgs(spec: PluginSpec, instance: ModifierInstance, uniforms: Map<UniformKey, Uniform<any>>): any[] {
+/** Plain (non-Uniform) value for a BAKEABLE_KINDS param - the plugin's handleProp() writes it
+ *  into the GLSL source as a literal. */
+function makeBakedValue(kind: ParamKind, value: any): any {
+  switch (kind) {
+    case 'vec3': return new Vector3(value.x, value.y, value.z);
+    case 'vec2': return new Vector2(value.x, value.y);
+    case 'color': return colorFromHex(value);
+    default: return value;
+  }
+}
+
+type LivePredicate = (paramSpec: ParamSpec) => boolean;
+
+function buildArgs(spec: PluginSpec, instance: ModifierInstance, uniforms: Map<UniformKey, Uniform<any>>, isLive: LivePredicate): any[] {
   return spec.params.map((paramSpec) => {
     const raw = instance.params[paramSpec.name] ?? paramSpec.default;
 
-    if (TEXTURE_KINDS.has(paramSpec.kind) || paramSpec.kind === 'float' || paramSpec.kind === 'vec3'
-      || paramSpec.kind === 'vec2' || paramSpec.kind === 'color' || paramSpec.kind === 'matrix4') {
+    if (BAKEABLE_KINDS.has(paramSpec.kind) && !isLive(paramSpec)) {
+      return makeBakedValue(paramSpec.kind, raw);
+    }
+
+    if (LIVE_KINDS.has(paramSpec.kind)) {
       const key = uniformKey(instance.id, paramSpec.name);
       const uniform = new Uniform(makeUniformValue(paramSpec.kind, raw, paramSpec.name));
       uniforms.set(key, uniform);
@@ -134,19 +178,92 @@ function buildLiveLineCenter(
   return uniform;
 }
 
-function buildModifier(instance: ModifierInstance, uniforms: Map<UniformKey, Uniform<any>>) {
+function disposeOwnedTextures(uniforms: Iterable<Uniform<any>>) {
+  for (const uniform of uniforms) {
+    const value = uniform.value;
+    if (value?.isTexture && !value.userData?.isGlobal) value.dispose();
+  }
+}
+
+/** A plugin that passes a param through handleUniformProp() (which assumes a Uniform) stores a
+ *  baked plain value in its uniforms map as-is - three.js would then fail on it at render time. */
+function hasNonUniformEntry(plugin: { uniforms?: Record<string, unknown> }): boolean {
+  return Object.values(plugin.uniforms ?? {}).some((u) => !(u instanceof Uniform));
+}
+
+/** Calls the plugin function with baked constants for every non-live bakeable param. If the
+ *  plugin turns out not to accept a plain value for one of them (not flagged uniformOnly in the
+ *  registry, e.g. a plugin added to the engine later), rebuilds it with everything live. */
+function buildPlugin(
+  spec: PluginSpec,
+  instance: ModifierInstance,
+  uniforms: Map<UniformKey, Uniform<any>>,
+  isLive: LivePredicate,
+  systemSize: number,
+) {
+  const call = (predicate: LivePredicate) => {
+    const local = new Map<UniformKey, Uniform<any>>();
+    const args = buildArgs(spec, instance, local, predicate);
+    try {
+      return { plugin: spec.fn(...(spec.injectSystemSize ? [systemSize, ...args] : args)), local };
+    } catch (err) {
+      disposeOwnedTextures(local.values());
+      throw err;
+    }
+  };
+
+  let { plugin, local } = call(isLive);
+  if (hasNonUniformEntry(plugin)) {
+    console.warn(`Plugin "${instance.type}" needs Uniforms for some params - building it with all params live. Flag them uniformOnly in the registry.`);
+    disposeOwnedTextures(local.values());
+    ({ plugin, local } = call(() => true));
+  }
+  for (const [key, uniform] of local) uniforms.set(key, uniform);
+  return plugin;
+}
+
+function buildModifier(instance: ModifierInstance, uniforms: Map<UniformKey, Uniform<any>>, isLive: LivePredicate, systemSize: number) {
   const spec = getPluginSpec(instance.type);
   if (!spec) {
     console.warn(`Unknown plugin type "${instance.type}" - skipped`);
     return null;
   }
-  const args = buildArgs(spec, instance, uniforms);
   try {
-    return spec.fn(...args);
+    return buildPlugin(spec, instance, uniforms, isLive, systemSize);
   } catch (err) {
     console.error(`Failed to build plugin "${instance.type}"`, err);
     return null;
   }
+}
+
+/** Every exposed param of every enabled modifier, in stack order. */
+export function collectExposedParams(config: ParticleSystemConfig): ExposedParam[] {
+  const result: ExposedParam[] = [];
+  const add = (slot: ModifierSlot, instance: ModifierInstance) => {
+    if (!instance.enabled || !instance.exposed) return;
+    const spec = getPluginSpec(instance.type);
+    for (const param of Object.keys(instance.exposed)) {
+      const paramSpec = spec?.params.find((p) => p.name === param);
+      if (!paramSpec || !LIVE_KINDS.has(paramSpec.kind)) {
+        console.warn(`"${instance.type}.${param}" is marked exposed but isn't a live param - ignored`);
+        continue;
+      }
+      result.push({ name: exposedName(instance, param)!, slot, instanceId: instance.id, modifierType: instance.type, param, kind: paramSpec.kind });
+    }
+  };
+  add('emitter', config.emitter);
+  config.spawnModifiers.forEach((m) => add('spawn', m));
+  config.updateModifiers.forEach((m) => add('update', m));
+  config.renderModifiers.forEach((m) => add('render', m));
+  return result;
+}
+
+/** Public names used by more than one exposed param. */
+export function findDuplicateExposedNames(exposed: ExposedParam[]): Set<string> {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const e of exposed) (seen.has(e.name) ? duplicates : seen).add(e.name);
+  return duplicates;
 }
 
 export interface BuildOptions {
@@ -155,32 +272,37 @@ export interface BuildOptions {
   visible?: boolean;
   /** Passed straight to the engine - set false to drive `system.update()` yourself. Default: true. */
   autoUpdate?: boolean;
+  /** Make every live-capable param a Uniform, not just the exposed ones - the editor needs this
+   *  so its controls can push changes without a rebuild. Default: false, i.e. unexposed
+   *  float/vec2/vec3/color params are baked into the shader as constants. */
+  allLive?: boolean;
 }
 
 export function buildParticleSystem(config: ParticleSystemConfig, options: BuildOptions = {}): BuiltSystem {
   const uniforms = new Map<UniformKey, Uniform<any>>();
 
+  const exposed = collectExposedParams(config);
+  // The editor flags these as you type; a runtime load must not silently drop one of them.
+  const duplicates = findDuplicateExposedNames(exposed);
+  if (duplicates.size && !options.allLive) {
+    throw new Error(`Duplicate exposed param name(s): ${[...duplicates].join(', ')}`);
+  }
+
+  const liveFor = (instance: ModifierInstance): LivePredicate =>
+    (paramSpec) => !!options.allLive || !!paramSpec.uniformOnly || instance.exposed?.[paramSpec.name] !== undefined;
+
   const emitterSpec = getPluginSpec(config.emitter.type);
   if (!emitterSpec) throw new Error(`Unknown emitter type "${config.emitter.type}"`);
+  const emitterPlugin: ParticleEmitterPlugin = buildPlugin(emitterSpec, config.emitter, uniforms, liveFor(config.emitter), config.system.size);
 
-  const emitterExtraArgs = buildArgs(emitterSpec, config.emitter, uniforms);
-  const emitterArgs = emitterSpec.injectSystemSize ? [config.system.size, ...emitterExtraArgs] : emitterExtraArgs;
-  const emitterPlugin: ParticleEmitterPlugin = emitterSpec.fn(...emitterArgs);
-
-  const spawnPlugins = config.spawnModifiers
+  const buildList = (list: ModifierInstance[]) => list
     .filter((m) => m.enabled)
-    .map((m) => buildModifier(m, uniforms))
-    .filter(Boolean) as ParticleEmitterModifierPlugin[];
+    .map((m) => buildModifier(m, uniforms, liveFor(m), config.system.size))
+    .filter(Boolean);
 
-  const updatePlugins = config.updateModifiers
-    .filter((m) => m.enabled)
-    .map((m) => buildModifier(m, uniforms))
-    .filter(Boolean) as ParticlePlugin[];
-
-  const renderPlugins = config.renderModifiers
-    .filter((m) => m.enabled)
-    .map((m) => buildModifier(m, uniforms))
-    .filter(Boolean) as ParticlePlugin[];
+  const spawnPlugins = buildList(config.spawnModifiers) as ParticleEmitterModifierPlugin[];
+  const updatePlugins = buildList(config.updateModifiers) as ParticlePlugin[];
+  const renderPlugins = buildList(config.renderModifiers) as ParticlePlugin[];
 
   const system = new ParticleSystemEngine(
     {
@@ -203,18 +325,30 @@ export function buildParticleSystem(config: ParticleSystemConfig, options: Build
 
   if (options.visible) system.visible = true;
 
+  const params: Record<string, Uniform<any>> = {};
+  const exposedByName = new Map<string, ExposedParam>();
+  for (const e of exposed) {
+    const uniform = uniforms.get(uniformKey(e.instanceId, e.param));
+    if (!uniform) continue; // plugin failed to build and was skipped
+    params[e.name] = uniform;
+    exposedByName.set(e.name, e);
+  }
+
   return {
     system,
     uniforms,
+    params,
+    exposed: [...exposedByName.values()],
+    setParam: (name, value) => {
+      const e = exposedByName.get(name);
+      return e ? applyLiveUpdate(uniforms, e.instanceId, e.param, e.kind, value) : false;
+    },
     dispose: () => {
       system.dispose();
       // system.dispose() only frees textures each material tracks as its own
       // (_ownedTextures); plugin-supplied gradient/image textures merged in from here
       // are ours to free.
-      for (const uniform of uniforms.values()) {
-        const value = uniform.value;
-        if (value?.isTexture && !value.userData?.isGlobal) value.dispose();
-      }
+      disposeOwnedTextures(uniforms.values());
     },
   };
 }

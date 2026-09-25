@@ -1,12 +1,24 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import TopBar from './components/TopBar';
 import EmitterZone from './components/EmitterZone';
 import StackPanel from './components/StackPanel';
 import Inspector from './components/Inspector';
 import Viewport from './components/Viewport';
+import ColumnResizer, { clampRightColumnWidth, DEFAULT_RIGHT_COLUMN_WIDTH } from './components/ColumnResizer';
 import { useEditorStore } from './state/store';
 import { ModifierSlot } from '~/ParticleSystem/config/configTypes';
+
+const RIGHT_COLUMN_WIDTH_KEY = 'particle-editor-right-column-width';
+
+// A per-browser layout preference, not part of the config - kept out of the persisted store.
+function loadRightColumnWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(RIGHT_COLUMN_WIDTH_KEY));
+    if (saved > 0) return clampRightColumnWidth(saved);
+  } catch { /* storage unavailable - fall back to the default */ }
+  return DEFAULT_RIGHT_COLUMN_WIDTH;
+}
 
 function listForSlot(config: ReturnType<typeof useEditorStore.getState>['config'], slot: ModifierSlot) {
   if (slot === 'spawn') return config.spawnModifiers;
@@ -18,6 +30,18 @@ function listForSlot(config: ReturnType<typeof useEditorStore.getState>['config'
 export default function App() {
   const config = useEditorStore((s) => s.config);
   const reorderModifier = useEditorStore((s) => s.reorderModifier);
+  const [rightColumnWidth, setRightColumnWidth] = useState(loadRightColumnWidth);
+
+  useEffect(() => {
+    try { localStorage.setItem(RIGHT_COLUMN_WIDTH_KEY, String(rightColumnWidth)); } catch { /* not persisted */ }
+  }, [rightColumnWidth]);
+
+  // Shrinking the window can leave a saved width that no longer leaves room for the viewport.
+  useEffect(() => {
+    const handleResize = () => setRightColumnWidth((w) => clampRightColumnWidth(w));
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -27,7 +51,7 @@ export default function App() {
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest('.stack-item, .inspector, .add-modifier-menu, input, select, textarea, button, label, a')) return;
+      if (target.closest('.stack-item, .inspector, .column-resizer, .add-modifier-menu, input, select, textarea, button, label, a')) return;
       useEditorStore.getState().select(null);
     };
     document.addEventListener('click', handleClick);
@@ -52,9 +76,10 @@ export default function App() {
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <div className="app-shell">
         <TopBar />
-        <div className="app-body">
+        <div className="app-body" style={{ gridTemplateColumns: `1fr ${rightColumnWidth}px` }}>
           <Viewport />
           <div className="right-column">
+            <ColumnResizer width={rightColumnWidth} onChange={setRightColumnWidth} />
             <div className="stack-column">
               <EmitterZone />
               <StackPanel slot="spawn" title="Spawn Modifiers" items={config.spawnModifiers} />

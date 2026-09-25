@@ -3,6 +3,7 @@ import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../state/store';
 import { buildParticleSystem } from '~/ParticleSystem/config/buildParticleSystem';
+import { EDITOR_CAMERA_LENS } from '~/ParticleSystem/config/configTypes';
 
 // Keeps the renderer's clear alpha in sync with the Transparent toggle - live, not just at
 // screenshot time - so the canvas actually goes transparent (revealing the checkerboard behind
@@ -75,7 +76,7 @@ function SceneContent() {
   useEffect(() => {
     const config = useEditorStore.getState().config;
     try {
-      const built = buildParticleSystem(config, { visible: true });
+      const built = buildParticleSystem(config, { visible: true, allLive: true });
       scene.add(built.system);
       useEditorStore.getState().builtSystemRef.current = built;
       setBuildError(null);
@@ -118,7 +119,7 @@ export default function Viewport() {
   return (
     <div className={`viewport${transparentScreenshot ? ' viewport-transparent' : ''}`}>
       <Canvas
-        camera={{ position: initialCamera.position, fov: 50, near: 0.01, far: 500 }}
+        camera={{ position: initialCamera.position, ...EDITOR_CAMERA_LENS }}
         gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}
       >
         {!transparentScreenshot && <color attach="background" args={[background]} />}

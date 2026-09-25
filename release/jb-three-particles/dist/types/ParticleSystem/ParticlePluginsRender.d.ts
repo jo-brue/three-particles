@@ -1,0 +1,17 @@
+import { Color, Matrix4, Texture, Uniform, Vector2Like, Vector3, Vector3Like } from 'three';
+import { ParticlePlugin, ParticleProp } from './ParticleSystem';
+export declare function colorOverLife(tex: Uniform<Texture>): ParticlePlugin;
+export declare function colorRing(color: Uniform<Color>, position: ParticleProp<Vector3Like>, size: ParticleProp<number>): ParticlePlugin;
+export declare function round(): ParticlePlugin;
+export declare function textured(tex: Uniform<Texture>): ParticlePlugin;
+export declare function flicker(speed: ParticleProp<number>): ParticlePlugin;
+export declare function soft(contrast: ParticleProp<Vector2Like>): ParticlePlugin;
+export declare function color(col: Uniform<Color>): ParticlePlugin;
+export declare function colorFromLookup(tex: Uniform<Texture>): ParticlePlugin;
+export declare function switchGeometries(threshhold: number): ParticlePlugin;
+export declare function colorArea(color: ParticleProp<Color>, position: ParticleProp<Vector3Like>, size: ParticleProp<number>): ParticlePlugin;
+export declare function sampleFromImageAtSpawn(tex: Uniform<Texture>, size: ParticleProp<number>, aspect: ParticleProp<number>, ignoreAlpha?: boolean): ParticlePlugin;
+export declare function sampleFromImage(tex: Uniform<Texture>, transform?: Uniform<Matrix4>): ParticlePlugin;
+export declare function sampleFromImageContinuous(tex: Uniform<Texture>, position: ParticleProp<Vector3Like>, size: ParticleProp<number>, aspect: ParticleProp<number>, plane?: 'xy' | 'xz' | 'yz', ignoreAlpha?: boolean): ParticlePlugin;
+export declare function sizeOverLife(tex: Uniform<Texture>): ParticlePlugin;
+export declare function scaleArea(position: ParticleProp<Vector3>, size: ParticleProp<number>, scale: ParticleProp<number>): ParticlePlugin;
