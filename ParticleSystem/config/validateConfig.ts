@@ -19,6 +19,7 @@ export function validateConfig(value: unknown): ParticleSystemConfig {
       baseSize: v.system.baseSize ?? 20,
       renderMode: v.system.renderMode ?? 'billboard',
       preHeat: v.system.preHeat ?? 1,
+      immortal: v.system.immortal ?? false,
       background: v.system.background ?? '#0b0d12',
       blendMode: v.system.blendMode ?? 'additive',
     },

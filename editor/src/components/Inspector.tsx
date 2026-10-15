@@ -1,5 +1,5 @@
 import { useEditorStore } from '../state/store';
-import { getPluginSpec } from '~/ParticleSystem/config/registry';
+import { getPluginSpec, usesParticleLife } from '~/ParticleSystem/config/registry';
 import { exposedName, LIVE_KINDS, ModifierInstance } from '~/ParticleSystem/config/configTypes';
 import { collectExposedParams, findDuplicateExposedNames } from '~/ParticleSystem/config/buildParticleSystem';
 import NumberField from './fields/NumberField';
@@ -69,6 +69,12 @@ export default function Inspector() {
         </div>
       )}
 
+      {config.system.immortal && usesParticleLife(instance.type) && (
+        <div className="inspector-warning">
+          Ignored while Immortal is on - particles never age, so there's no life for this to run over.
+        </div>
+      )}
+
       {spec.params.length === 0 && <div className="inspector-empty-params">No parameters.</div>}
 
       <div className="inspector-params">
@@ -91,6 +97,9 @@ export default function Inspector() {
             case 'plainBool':
               return <BoolField key={paramSpec.name} label={paramSpec.label} value={value as boolean} onChange={onChange} />;
             case 'lifeRange':
+              if (config.system.immortal) {
+                return <div key={paramSpec.name} className="inspector-empty-params">{paramSpec.label}: not used while Immortal is on.</div>;
+              }
               return <LifeRangeField key={paramSpec.name} label={paramSpec.label} value={value as [number, number]} onChange={onChange} />;
             case 'gradientColor':
               return <GradientColorField key={paramSpec.name} label={paramSpec.label} value={value as any} onChange={onChange} />;

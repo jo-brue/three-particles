@@ -17,6 +17,9 @@ export interface PluginSpec {
   /** Best-effort registry entry auto-derived from the function's runtime signature rather
    *  than hand-curated - shown with a generic JSON-args inspector. */
   isFallback?: boolean;
+  /** Driven by the particle's relative age - meaningless (and skipped at build time) when the
+   *  system is immortal. */
+  usesLife?: boolean;
 }
 
 function vec2(x = 0, y = 0) { return { x, y }; }
@@ -245,7 +248,7 @@ const UPDATE_PLUGINS: PluginSpec[] = [
     params: [p('_vel', 'vec3', vec3(0, 1, 0), { label: 'Velocity' })],
   },
   {
-    name: 'velocityOverLife', slot: 'update', label: 'Velocity Over Life', fn: UpdatePlugins.velocityOverLife,
+    name: 'velocityOverLife', slot: 'update', label: 'Velocity Over Life', fn: UpdatePlugins.velocityOverLife, usesLife: true,
     params: [p('tex', 'gradientVec3', { stops: [[0, vec3(0, 1, 0)], [1, vec3(0, 0, 0)]] }, { label: 'Velocity Curve' })],
   },
   {
@@ -454,7 +457,7 @@ const UPDATE_PLUGINS: PluginSpec[] = [
 
 const RENDER_PLUGINS: PluginSpec[] = [
   {
-    name: 'colorOverLife', slot: 'render', label: 'Color Over Life', fn: RenderPlugins.colorOverLife,
+    name: 'colorOverLife', slot: 'render', label: 'Color Over Life', fn: RenderPlugins.colorOverLife, usesLife: true,
     params: [p('tex', 'gradientColor', {
       stops: [[0, 'rgba(255,255,255,0)'], [0.15, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']],
     }, { label: 'Color Curve' })],
@@ -490,7 +493,7 @@ const RENDER_PLUGINS: PluginSpec[] = [
     params: [p('tex', 'texture', { dataUrl: null }, { label: 'Lookup Image' })],
   },
   {
-    name: 'switchGeometries', slot: 'render', label: 'Switch Geometries', fn: RenderPlugins.switchGeometries,
+    name: 'switchGeometries', slot: 'render', label: 'Switch Geometries', fn: RenderPlugins.switchGeometries, usesLife: true,
     params: [p('threshhold', 'plainFloat', 0.5, { min: 0, max: 1, step: 0.01, label: 'Threshold' })],
   },
   {
@@ -529,8 +532,19 @@ const RENDER_PLUGINS: PluginSpec[] = [
     ],
   },
   {
-    name: 'sizeOverLife', slot: 'render', label: 'Size Over Life', fn: RenderPlugins.sizeOverLife,
+    name: 'sizeOverLife', slot: 'render', label: 'Size Over Life', fn: RenderPlugins.sizeOverLife, usesLife: true,
     params: [p('tex', 'gradientScalar', { stops: [[0, 0], [0.2, 1], [1, 0]] }, { label: 'Size Curve' })],
+  },
+  {
+    name: 'simpleNoise3DScale', slot: 'render', label: 'Simple Noise Scale (3D)', fn: RenderPlugins.simpleNoise3DScale,
+    params: [
+      p('noiseSpeed', 'float', 0.3, { min: -5, max: 5, step: 0.01, label: 'Evolve Speed' }),
+      p('noiseScale', 'float', 3, { min: 0, max: 20, step: 0.1 }),
+      p('pixelate', 'float', 24, { min: 1, max: 128, step: 1 }),
+      p('smoothness', 'float', 1, { min: 0, max: 1, step: 0.01, label: 'Smooth (0 = hard edge)' }),
+      p('amount', 'float', 0.5, { min: 0, max: 1, step: 0.01, label: 'Amount (0 = all at min scale, 1 = all full size)' }),
+      p('minScale', 'float', 0, { min: 0, max: 1, step: 0.01, label: 'Min Scale' }),
+    ],
   },
   {
     name: 'scaleArea', slot: 'render', label: 'Scale Area', fn: RenderPlugins.scaleArea,
@@ -538,6 +552,21 @@ const RENDER_PLUGINS: PluginSpec[] = [
       p('position', 'vec3', vec3()),
       p('size', 'float', 1, { min: 0, max: 20, step: 0.1 }),
       p('scale', 'float', 0.5, { min: 0, max: 5, step: 0.01 }),
+      p('falloff', 'float', 0.6, { min: 0, max: 1, step: 0.01, label: 'Falloff (0 = hard edge, 1 = fades from the center)' }),
+      p('amount', 'float', 1, { min: 0, max: 1, step: 0.01, label: 'Amount (0 = no effect)' }),
+      p('set', 'plainBool', false, { label: 'Set instead of multiply' }),
+      p('invert', 'plainBool', false, { label: 'Invert (scale outside the area)' }),
+    ],
+  },
+  {
+    name: 'scaleAreaBox', slot: 'render', label: 'Scale Area (Box)', fn: RenderPlugins.scaleAreaBox,
+    params: [
+      p('position', 'vec3', vec3()),
+      p('size', 'vec3', vec3(1, 1, 1), { label: 'Half Size (center to edge)' }),
+      p('scale', 'float', 0.5, { min: 0, max: 5, step: 0.01 }),
+      p('falloff', 'float', 0.6, { min: 0, max: 1, step: 0.01, label: 'Falloff (0 = hard edge, 1 = fades from the center)' }),
+      p('set', 'plainBool', false, { label: 'Set instead of multiply' }),
+      p('invert', 'plainBool', false, { label: 'Invert (scale outside the area)' }),
     ],
   },
 ];
@@ -590,6 +619,13 @@ export const ALL_PLUGINS: PluginSpec[] = [...REGISTRY, ...FALLBACK_REGISTRY];
 
 export function getPluginSpec(name: string): PluginSpec | undefined {
   return ALL_PLUGINS.find((s) => s.name === name);
+}
+
+/** Whether a modifier depends on particle age. Uncurated fallbacks can't be flagged by hand,
+ *  so their name decides (e.g. streamVelocityOverLife). */
+export function usesParticleLife(type: string): boolean {
+  const spec = getPluginSpec(type);
+  return !!spec?.usesLife || (!!spec?.isFallback && /OverLife$/.test(spec.name));
 }
 
 export function pluginsForSlot(slot: ModifierSlot): PluginSpec[] {

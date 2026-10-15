@@ -20,11 +20,12 @@ export default class ParticleScene extends Scene{
     preHeat = 1,
     metaTex?:DataTexture,
     plugins:ParticlePlugin[] = [],
-    preheat:number[] = []
+    preheat:number[] = [],
+    immortal = false
   ){
     super();
 
-    this._updateMaterial = new ParticleUpdateMaterial(tex, rotationTex, preHeat, metaTex, plugins, preheat);
+    this._updateMaterial = new ParticleUpdateMaterial(tex, rotationTex, preHeat, metaTex, plugins, preheat, immortal);
 
     const quad = new Mesh(this._geometry, this._updateMaterial);
     this.add(quad);

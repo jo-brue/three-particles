@@ -102,6 +102,9 @@ export interface ParticleSystemConfig {
     baseSize: number;
     renderMode: 'billboard' | 'instanced';
     preHeat: number;
+    /** Particles never die of old age (see ParticleSystemProps.immortal). Over-life modifiers
+     *  are skipped while on, and preHeat is the reveal span in seconds. */
+    immortal: boolean;
     background: string;
     blendMode: BlendMode;
   };

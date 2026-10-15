@@ -33,7 +33,8 @@ export default class ParticleUpdateMaterial extends ShaderMaterial{
     preHeat = 1,
     metaTex?:DataTexture, 
     plugins:ParticlePlugin[] = [],
-    preheat:number[] = []
+    preheat:number[] = [],
+    immortal = false
   ){
 
     const _pluginDataMerged = mergePluginData(plugins);
@@ -65,7 +66,9 @@ export default class ParticleUpdateMaterial extends ShaderMaterial{
         // the shader below just counts it up toward 0 - no update plugins or respawn logic run,
         // and ParticleRenderMaterial discards it - so it's fully inert and invisible until birth.
         const phase = preheat[i >> 2] !== undefined ? preheat[i >> 2] : Math.random();
-        positions[i+3] = -phase * _maxLife * preHeat;
+        // Immortal particles have no lifetime to measure the reveal against, so preHeat is
+        // the reveal span in seconds there.
+        positions[i+3] = -phase * (immortal ? 1 : _maxLife) * preHeat;
       }
 
     }
@@ -95,6 +98,8 @@ export default class ParticleUpdateMaterial extends ShaderMaterial{
       },
 
       glslVersion: GLSL3,
+
+      defines: immortal ? { PARTICLE_IMMORTAL: '' } : {},
 
       vertexShader:`
 
@@ -145,7 +150,14 @@ export default class ParticleUpdateMaterial extends ShaderMaterial{
             // baked seed position only carries the emitter's local, un-offset shape.
             bool isBirth = age < 0.0;
 
-            age += uDeltaTime;
+            #ifdef PARTICLE_IMMORTAL
+              // Only the pre-birth countdown advances - a born particle stays at age 0 and so
+              // never reaches relAge 1 on its own. Modifiers that kill explicitly (pushing age
+              // past the particle's life) still land in the respawn branch below.
+              if(isBirth) age += uDeltaTime;
+            #else
+              age += uDeltaTime;
+            #endif
 
             if(relAge >= 1.0 || (isBirth && age >= 0.0)){
               // if age is over, or this is the birth frame - reset/place state
@@ -162,6 +174,12 @@ export default class ParticleUpdateMaterial extends ShaderMaterial{
               }
               
             }
+
+            #ifdef PARTICLE_IMMORTAL
+              // The birth frame can leave a sliver of overshoot past 0 when no spawn modifier
+              // resets age - snap it back, but keep explicit kills (age >= life) intact.
+              if(age > 0.0 && age < defaultState.w) age = 0.0;
+            #endif
 
             gState = vec4(position, age);
             gMeta = vec4(meta);

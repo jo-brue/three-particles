@@ -5,6 +5,7 @@ import ParticleRenderTargets from "~/ParticleSystem/ParticleRenderTargets";
 import ParticleScene from "~/ParticleSystem/ParticleScene";
 import { fullDisposeObject3D } from "~/Helpers";
 import { defaultRotations } from "~/ParticleSystem/Helpers";
+import { Extensions } from "~/ParticleSystem/ParticleSystemExtensions";
 
 export type ParticleSystemSize = 8 | 16 | 32 | 64 | 128 | 256 | 512 | 1024;
 export type ParticleRenderMode = 'billboard' | 'instanced';
@@ -46,6 +47,11 @@ export type ParticleSystemProps = {
   matcapTexture?: Texture,
   instancedMaterial?: Material,
   instancedMesh?: BufferGeometry,
+  /** Particles stop aging once born, so they never die of old age - only spawn/update
+   *  modifiers that kill explicitly (masks, kill areas) still trigger a respawn. relAge stays 0,
+   *  so over-life plugins have nothing to work with; leave them out. preHeat then sets the
+   *  birth reveal in seconds instead of lifetimes. */
+  immortal?: boolean,
 }
 
 export default class ParticleSystem extends Mesh{
@@ -85,7 +91,8 @@ export default class ParticleSystem extends Mesh{
       preHeat,
       props.emitter.metaData,
       [props.emitter, ...pluginsSpawn, ...pluginsUpdate],
-      props.emitter.preheat
+      props.emitter.preheat,
+      props.immortal
     );
 
     // Use native material for instanced mode if provided, otherwise use custom shader
@@ -185,6 +192,7 @@ export default class ParticleSystem extends Mesh{
         uniform sampler2D tStateTextureDefault;
         uniform sampler2D tRotationTexture;
         uniform float uBaseSize;
+        uniform float uTime;
         attribute vec2 instanceUV;
         varying vec2 vInstanceId;
         varying float vRelAge;
@@ -212,6 +220,8 @@ export default class ParticleSystem extends Mesh{
         
         // Initialize vSize for plugin modifications
         vSize = uBaseSize * 0.01;
+        // Size before any plugin touched it - lets a plugin set an absolute size instead of multiplying.
+        float vSizeBase = vSize;
         
         ${pluginData.vertFuncs || ''}
         `
@@ -325,6 +335,14 @@ export default class ParticleSystem extends Mesh{
       fragFuncs: ''
     };
     
+    // Shared GLSL helpers the plugins asked for via `requires`, prepended to both stages' vars.
+    // Skips PI - three's stock shaders already #define it, so ours would break compilation.
+    const requirements: Partial<Record<ParticleExtensions, string>> = {};
+    for (const plugin of plugins) {
+      for (const r of plugin.requires) if (r !== 'PI') requirements[r] = Extensions[r];
+    }
+    merged.vertVars = merged.fragVars = Object.values(requirements).join('');
+
     for (const plugin of plugins) {
       Object.assign(merged.uniforms, plugin.uniforms);
       if (plugin.vertVars) merged.vertVars += plugin.vertVars + '\n';

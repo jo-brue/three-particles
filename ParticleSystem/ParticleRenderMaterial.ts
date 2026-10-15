@@ -26,6 +26,8 @@ export default class ParticleRenderMaterial extends ShaderMaterial{
   constructor(props:ParticleSystemProps, plugins:ParticlePlugin[] = [], renderMode:ParticleRenderMode = 'billboard'){
 
     const _pluginDataMerged = mergePluginData(plugins);
+    // Shared GLSL helpers the plugins asked for via `requires` - pure functions, so both stages get them.
+    const _requirements = Object.values(_pluginDataMerged.requirements).join('');
 
     // window.devicePixelRatio && (
     //   props.baseSize = props.baseSize / (window.devicePixelRatio)
@@ -57,11 +59,13 @@ export default class ParticleRenderMaterial extends ShaderMaterial{
         uniform sampler2D tStateTextureDefault;
         uniform vec2 uResolution;
         uniform float uBaseSize;
+        uniform float uTime;
         varying float vRelAge;
         varying vec3 vPosition;
         varying vec2 vInstanceId;
         varying vec4 vState;
         varying float vSize;
+        ${_requirements}
         ${_pluginDataMerged.vertVars || ''}
         
 
@@ -79,6 +83,8 @@ export default class ParticleRenderMaterial extends ShaderMaterial{
           vec4 mvPosition = viewMatrix * _worldPosition;
 
           vSize = ( uBaseSize / - mvPosition.z ) * uResolution.y/800.0;
+          // Size before any plugin touched it - lets a plugin set an absolute size instead of multiplying.
+          float vSizeBase = vSize;
 
           ${_pluginDataMerged.vertFuncs || ''}
 
@@ -93,6 +99,7 @@ export default class ParticleRenderMaterial extends ShaderMaterial{
         uniform sampler2D tStateTextureDefault;
         uniform vec2 uResolution;
         uniform float uBaseSize;
+        uniform float uTime;
         attribute vec2 instanceUV;
         varying float vRelAge;
         varying vec3 vPosition;
@@ -100,6 +107,7 @@ export default class ParticleRenderMaterial extends ShaderMaterial{
         varying vec4 vState;
         varying float vSize;
         varying vec3 vViewNormal;
+        ${_requirements}
         ${_pluginDataMerged.vertVars || ''}
         
 
@@ -113,6 +121,8 @@ export default class ParticleRenderMaterial extends ShaderMaterial{
 
           // Initialize vSize for plugin modifications
           vSize = uBaseSize * 0.01;
+          // Size before any plugin touched it - lets a plugin set an absolute size instead of multiplying.
+          float vSizeBase = vSize;
 
           ${_pluginDataMerged.vertFuncs || ''}
 
@@ -143,6 +153,7 @@ export default class ParticleRenderMaterial extends ShaderMaterial{
         varying vec2 vInstanceId;
         varying float vSize;
 
+        ${_requirements}
         ${_pluginDataMerged.fragVars || ''}
 
         void main() {
@@ -165,6 +176,7 @@ export default class ParticleRenderMaterial extends ShaderMaterial{
         varying vec2 vInstanceId;
         varying vec3 vViewNormal;
 
+        ${_requirements}
         ${_pluginDataMerged.fragVars || ''}
 
         void main() {

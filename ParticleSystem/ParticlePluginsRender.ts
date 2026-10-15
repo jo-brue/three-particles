@@ -469,10 +469,97 @@ export function sizeOverLife(tex:Uniform<Texture>):ParticlePlugin{
   }
 }
 
+// Size counterpart of the simpleNoise3D spawn modifier: same evolving 3D noise over the
+// (pixelated) particle grid, but instead of gating spawns it shrinks particles where the noise
+// is low. `smoothness` (0..1) is the width of the fade between hidden and full size (0 = hard
+// edge). `amount` (0..1) slides that fade band across the noise range: 0 = every particle
+// hidden, 1 = every particle full size, whatever the smoothness - so it can be animated to
+// reveal/hide the whole pattern. `minScale` is the size where the pattern is "hidden" (0 =
+// gone, 1 = no effect).
+export function simpleNoise3DScale(
+  noiseSpeed: ParticleProp<number>,
+  noiseScale: ParticleProp<number>,
+  pixelate: ParticleProp<number>,
+  smoothness: ParticleProp<number>,
+  amount: ParticleProp<number>,
+  minScale: ParticleProp<number> = 0
+):ParticlePlugin{
+
+  const id = makeid(4);
+
+  const _uniforms:Uniforms = {};
+
+  const [ noiseSpeedUniformVarString, noiseSpeedVarString ] = handleProp(noiseSpeed, _uniforms, 'noiseSpeed', id, 'float', convertToFloatingString);
+  const [ noiseScaleUniformVarString, noiseScaleVarString ] = handleProp(noiseScale, _uniforms, 'noiseScale', id, 'float', convertToFloatingString);
+  const [ pixelateUniformVarString, pixelateVarString ] = handleProp(pixelate, _uniforms, 'pixelate', id, 'float', convertToFloatingString);
+  const [ smoothnessUniformVarString, smoothnessVarString ] = handleProp(smoothness, _uniforms, 'smoothness', id, 'float', convertToFloatingString);
+  const [ amountUniformVarString, amountVarString ] = handleProp(amount, _uniforms, 'amount', id, 'float', convertToFloatingString);
+  const [ minScaleUniformVarString, minScaleVarString ] = handleProp(minScale, _uniforms, 'minScale', id, 'float', convertToFloatingString);
+
+  return {
+
+    uniforms: _uniforms,
+
+    requires:['noise3d'],
+
+    vertVars:/*glsl*/`
+      ${ noiseSpeedUniformVarString }
+      ${ noiseScaleUniformVarString }
+      ${ pixelateUniformVarString }
+      ${ smoothnessUniformVarString }
+      ${ amountUniformVarString }
+      ${ minScaleUniformVarString }
+    `,
+
+    vertFunc:/*glsl*/`
+
+      float pixelSamples_${ id } = max(1.0, ${ pixelateVarString });
+      vec2 pixelUv_${ id } = floor(vInstanceId * pixelSamples_${ id }) / pixelSamples_${ id };
+      // snoise3d returns roughly [-1,1] - remap to [0,1] like simpleNoise3D.
+      float noise_${ id } = snoise3d(vec3(pixelUv_${ id } * ${ noiseScaleVarString }, uTime * ${ noiseSpeedVarString })) * 0.5 + 0.5;
+      // Band center runs from just above the noise range (amount 0, all hidden) to just below
+      // it (amount 1, all shown) - offset by half the band so its ends fully clear 0..1.
+      float halfBand_${ id } = max( ${ smoothnessVarString }, 0.0001 ) * 0.5;
+      float center_${ id } = mix( 1.0 + halfBand_${ id }, -halfBand_${ id }, ${ amountVarString } );
+      float mask_${ id } = smoothstep( center_${ id } - halfBand_${ id }, center_${ id } + halfBand_${ id }, noise_${ id } );
+      vSize *= mix( ${ minScaleVarString }, 1.0, mask_${ id } );
+
+    `
+
+  }
+}
+
+// Shared tail of scaleArea / scaleAreaBox: `distExpr` is the particle's distance from the
+// area's center normalized to its edge (1.0 = on the boundary). By default it multiplies
+// whatever size earlier render plugins produced; with `set`, it overrides it with base size *
+// scale inside the area instead (so e.g. sizeOverLife / noise scale are ignored there),
+// blending back out over the falloff. `falloff` is the fraction of the area, measured inward
+// from the edge, over which the effect fades out: 0 = hard edge, 1 = fades all the way from
+// the center. `amount` blends the whole effect in: 0 = no effect, 1 = full effect. `invert`
+// applies the scale outside the area instead of inside it.
+function scaleByArea(id: string, distExpr: string, scaleVarString: string, falloffVarString: string, amountVarString: string, set: boolean, invert: boolean): string {
+  return /*glsl*/`
+
+      // Inner edge clamped just below 1 so falloff 0 is a hard step instead of undefined.
+      float falloff_${ id } = ${ invert ? '1.0 - ' : '' }smoothstep(min(1.0 - ${ falloffVarString }, 0.9999), 1.0, ${ distExpr });
+      // How strongly this particle is affected: 1 deep inside the area at full amount, 0 outside.
+      float weight_${ id } = (1.0 - falloff_${ id }) * ${ amountVarString };
+      ${ set
+        ? `vSize = mix( vSize, vSizeBase * ${ scaleVarString }, weight_${ id } );`
+        : `vSize *= mix( 1.0, ${ scaleVarString }, weight_${ id } );` }
+
+    `;
+}
+
+// Spherical area around `position` with radius `size` - see scaleByArea for the options.
 export function scaleArea( 
   position: ParticleProp<Vector3>,
   size: ParticleProp<number>,
   scale: ParticleProp<number>,
+  falloff: ParticleProp<number> = 0.6,
+  amount: ParticleProp<number> = 1,
+  set = false,
+  invert = false,
 ):ParticlePlugin{
 
   const id = makeid(4);
@@ -482,6 +569,8 @@ export function scaleArea(
   const [ positionUniformVarString, positionVarString ] = handleProp(position, _uniforms, 'position', id, 'vec3', convertToVec3String);
   const [ sizeUniformVarString, sizeVarString ] = handleProp(size, _uniforms, 'size', id, 'float', convertToFloatingString);
   const [ scaleUniformVarString, scaleVarString ] = handleProp(scale, _uniforms, 'scale', id, 'float', convertToFloatingString);
+  const [ falloffUniformVarString, falloffVarString ] = handleProp(falloff, _uniforms, 'falloff', id, 'float', convertToFloatingString);
+  const [ amountUniformVarString, amountVarString ] = handleProp(amount, _uniforms, 'amount', id, 'float', convertToFloatingString);
 
   return {
     
@@ -493,13 +582,54 @@ export function scaleArea(
       ${ sizeUniformVarString }
       ${ positionUniformVarString }
       ${ scaleUniformVarString }
+      ${ falloffUniformVarString }
+      ${ amountUniformVarString }
     `,
 
-    vertFunc:/*glsl*/`
+    vertFunc: scaleByArea(id, `distance( ${positionVarString}, defaultState.xyz ) / ${ sizeVarString }`, scaleVarString, falloffVarString, amountVarString, set, invert),
 
-      vSize *=  mix( ${ scaleVarString }, 1.0,  smoothstep(.4, 1.0, distance( ${positionVarString}, defaultState.xyz ) / ${ sizeVarString }));
+  }
+}
 
-    `
+// Axis-aligned box around `position`, `size` = half-extents per axis (center to edge) - see
+// scaleByArea for the options. The falloff is measured per axis relative to each half-extent,
+// so on a non-cubic box the fade band is proportionally wider along the longer axes.
+export function scaleAreaBox( 
+  position: ParticleProp<Vector3>,
+  size: ParticleProp<Vector3>,
+  scale: ParticleProp<number>,
+  falloff: ParticleProp<number> = 0.6,
+  set = false,
+  invert = false,
+):ParticlePlugin{
+
+  const id = makeid(4);
+
+  const _uniforms:Uniforms = {};
+
+  const [ positionUniformVarString, positionVarString ] = handleProp(position, _uniforms, 'position', id, 'vec3', convertToVec3String);
+  const [ sizeUniformVarString, sizeVarString ] = handleProp(size, _uniforms, 'size', id, 'vec3', convertToVec3String);
+  const [ scaleUniformVarString, scaleVarString ] = handleProp(scale, _uniforms, 'scale', id, 'float', convertToFloatingString);
+  const [ falloffUniformVarString, falloffVarString ] = handleProp(falloff, _uniforms, 'falloff', id, 'float', convertToFloatingString);
+
+  return {
+    
+    uniforms: _uniforms,
+
+    requires:[],
+
+    vertVars:/*glsl*/`
+      ${ sizeUniformVarString }
+      ${ positionUniformVarString }
+      ${ scaleUniformVarString }
+      ${ falloffUniformVarString }
+    `,
+
+    vertFunc: /*glsl*/`
+      // Largest per-axis distance relative to the half-extent - 1.0 on the box's surface.
+      vec3 boxDist_${ id } = abs( defaultState.xyz - ${ positionVarString } ) / max( ${ sizeVarString }, vec3(0.0001) );
+      ${ scaleByArea(id, `max( boxDist_${ id }.x, max( boxDist_${ id }.y, boxDist_${ id }.z ) )`, scaleVarString, falloffVarString, '1.0', set, invert) }
+    `,
 
   }
 }

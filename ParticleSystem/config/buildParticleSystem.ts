@@ -15,7 +15,7 @@ import {
   ParamSpec,
   ParticleSystemConfig,
 } from '~/ParticleSystem/config/configTypes';
-import { getPluginSpec, PluginSpec } from '~/ParticleSystem/config/registry';
+import { getPluginSpec, PluginSpec, usesParticleLife } from '~/ParticleSystem/config/registry';
 import {
   buildColorGradientTexture,
   buildImageTexture,
@@ -297,6 +297,9 @@ export function buildParticleSystem(config: ParticleSystemConfig, options: Build
 
   const buildList = (list: ModifierInstance[]) => list
     .filter((m) => m.enabled)
+    // Their age input is pinned to 0 while immortal - built anyway they'd freeze at their
+    // curve's first value (often fully transparent / zero size).
+    .filter((m) => !(config.system.immortal && usesParticleLife(m.type)))
     .map((m) => buildModifier(m, uniforms, liveFor(m), config.system.size))
     .filter(Boolean);
 
@@ -310,6 +313,7 @@ export function buildParticleSystem(config: ParticleSystemConfig, options: Build
       baseSize: config.system.baseSize,
       autoUpdate: options.autoUpdate ?? true,
       renderMode: config.system.renderMode,
+      immortal: config.system.immortal,
       // three.js only applies a material's blending mode when `transparent` is true - for
       // NormalBlending it otherwise forces NoBlending (see WebGLState.setMaterial), so without
       // this the alpha channel is ignored entirely and particles render fully opaque regardless

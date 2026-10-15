@@ -20,8 +20,21 @@ export default function TopBar() {
 
       <PresetsControl />
 
-      <label className="topbar-field" title="Particles are born one after another instead of all at once - this sets how many lifetimes that staggered reveal spreads across on load (1 = spread over one full lifetime).">
-        Reveal spread
+      <label className="topbar-field" title="Particles stop aging once born and never die on their own. Over-life modifiers are ignored while this is on; kill/mask modifiers still respawn particles.">
+        Immortal
+        <input
+          type="checkbox" checked={config.system.immortal}
+          onChange={(e) => setSystemSetting('immortal', e.target.checked)}
+        />
+      </label>
+
+      <label
+        className="topbar-field"
+        title={config.system.immortal
+          ? 'Particles are born one after another instead of all at once - this sets how many seconds that staggered reveal takes on load.'
+          : 'Particles are born one after another instead of all at once - this sets how many lifetimes that staggered reveal spreads across on load (1 = spread over one full lifetime).'}
+      >
+        {config.system.immortal ? 'Reveal (s)' : 'Reveal spread'}
         <input
           type="number" min={0} max={5} step={0.05} value={config.system.preHeat}
           onChange={(e) => setSystemSetting('preHeat', parseFloat(e.target.value) || 0)}

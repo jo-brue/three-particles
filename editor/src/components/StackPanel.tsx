@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ModifierInstance, ModifierSlot } from '~/ParticleSystem/config/configTypes';
-import { getPluginSpec } from '~/ParticleSystem/config/registry';
+import { getPluginSpec, usesParticleLife } from '~/ParticleSystem/config/registry';
 import { useEditorStore } from '../state/store';
 import AddModifierMenu from './AddModifierMenu';
 import PanelHeader from './PanelHeader';
@@ -13,6 +13,7 @@ function StackItem({ slot, instance }: { slot: ModifierSlot; instance: ModifierI
   const select = useEditorStore((s) => s.select);
   const toggleEnabled = useEditorStore((s) => s.toggleEnabled);
   const removeModifier = useEditorStore((s) => s.removeModifier);
+  const ignored = useEditorStore((s) => s.config.system.immortal) && usesParticleLife(instance.type);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: instance.id,
@@ -34,6 +35,7 @@ function StackItem({ slot, instance }: { slot: ModifierSlot; instance: ModifierI
         onChange={() => toggleEnabled(slot, instance.id)}
       />
       <span className="stack-item-label">{spec?.label ?? instance.type}</span>
+      {ignored && <span className="stack-item-warning" title="Ignored - particles are immortal, so there's no life for this to run over">⚠</span>}
       <button type="button" className="icon-btn" onClick={(e) => { e.stopPropagation(); removeModifier(slot, instance.id); }}>×</button>
     </div>
   );

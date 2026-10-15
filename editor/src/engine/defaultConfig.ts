@@ -11,6 +11,7 @@ export function createDefaultConfig(): ParticleSystemConfig {
       baseSize: 34,
       renderMode: 'billboard',
       preHeat: 1,
+      immortal: false,
       background: '#0b0d12',
       blendMode: 'additive',
     },
